@@ -36,7 +36,6 @@ use tokio::signal::unix::{signal, SignalKind};
 use std::{future::Future, pin::Pin, time::Instant};
 use hyper::body::to_bytes;
 
-#[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
 use metrics::histogram;
