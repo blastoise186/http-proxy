@@ -1192,6 +1192,7 @@ dependencies = [
  "lazy_static",
  "metrics",
  "metrics-exporter-prometheus",
+ "parking_lot",
  "tokio",
  "tracing",
  "tracing-subscriber",

@@ -1,5 +1,6 @@
 mod error;
 mod ratelimiter_map;
+mod cache;
 
 use error::RequestError;
 use http::{
@@ -33,6 +34,7 @@ use tokio::signal::unix::{signal, SignalKind};
 
 #[cfg(feature = "expose-metrics")]
 use std::{future::Future, pin::Pin, time::Instant};
+use hyper::body::to_bytes;
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
@@ -40,11 +42,17 @@ use lazy_static::lazy_static;
 use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use crate::cache::Cache;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
     static ref METRIC_KEY: String =
         env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
+}
+
+lazy_static! {
+    static ref CACHE_DURATION: u64 =
+        env::var("CACHE_DURATION").map_or(60 * 10, |duration| duration.parse().unwrap());
 }
 
 #[tokio::main]
@@ -91,6 +99,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .expect("Failed to create metrics receiver!");
     }
 
+    let cache = Cache::new();
+
     // The closure inside `make_service_fn` is run for each connection,
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
@@ -101,6 +111,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
+        let cache = cache.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
@@ -117,13 +128,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     if uri.path() == "/metrics" {
                         handle_metrics(handle.clone())
                     } else {
-                        Box::pin(handle_request(client.clone(), ratelimiter, token, incoming))
+                        Box::pin(handle_request(client.clone(), ratelimiter, token, incoming, cache.clone()))
                     }
                 }
 
                 #[cfg(not(feature = "expose-metrics"))]
                 {
-                    handle_request(client.clone(), ratelimiter, token, incoming)
+                    handle_request(client.clone(), ratelimiter, token, incoming, cache.clone())
                 }
             }))
         }
@@ -258,6 +269,7 @@ async fn handle_request(
     ratelimiter: InMemoryRatelimiter,
     token: String,
     mut request: Request<Body>,
+    cache: Arc<Cache>
 ) -> Result<Response<Body>, RequestError> {
     trace!("Incoming request: {:?}", request);
 
@@ -292,6 +304,15 @@ async fn handle_request(
 
     let p = path_name(&path);
 
+    let api_route = format!("{}{}", api_path, trimmed_path);
+
+    // check our cache for some paths
+    if matches!(path, Path::InvitesCode | Path::UsersId) {
+       if let Some(cached) = cache.get(&api_route) {
+           return Ok(Response::new(Body::from(cached)))
+       }
+    }
+
     let header_sender = match ratelimiter.wait_for_ticket(path).await {
         Ok(sender) => sender,
         Err(e) => {
@@ -317,7 +338,7 @@ async fn handle_request(
     request.headers_mut().remove(TRANSFER_ENCODING);
     request.headers_mut().remove(UPGRADE);
 
-    let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
+    let mut uri_string = format!("https://discord.com{}", api_route);
 
     if let Some(query) = request.uri().query() {
         uri_string.push('?');
@@ -373,6 +394,24 @@ async fn handle_request(
     }
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
+
+    let (parts, body) = resp.into_parts();
+
+    let bytes = match to_bytes(body).await {
+        Ok(bytes) => {
+            let b = bytes.clone();
+            let vec = bytes.to_vec();
+            cache.insert(api_route, vec);
+
+            b
+        }
+        Err(e) => {
+            error!("Error when receiving request body from discord: {:?}", e);
+            return Err(RequestError::RequestIssue { source: e });
+        }
+    };
+
+    let resp = Response::from_parts(parts, Body::from(bytes));
 
     Ok(resp)
 }

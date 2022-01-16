@@ -19,6 +19,7 @@ twilight-http-ratelimiting = "0.8.2"
 metrics = { version = "0.17", optional = true }
 metrics-exporter-prometheus = { version = "0.7", default-features = false, optional = true }
 lazy_static = { version = "1.4", optional = true }
+parking_lot = "0.11"
 
 [features]
 expose-metrics = ["metrics", "metrics-exporter-prometheus", "lazy_static"]
