@@ -1,9 +1,9 @@
+use crate::CACHE_DURATION;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use parking_lot::RwLock;
-use tokio::time::{Instant, interval};
-use crate::CACHE_DURATION;
+use tokio::time::{interval, Instant};
 
 pub struct CachedResponse {
     cached_at: Instant,
@@ -25,11 +25,9 @@ pub struct Cache {
 
 impl Cache {
     pub fn new() -> Arc<Cache> {
-        let c = Arc::new(
-            Cache {
-                inner: Default::default()
-            }
-        );
+        let c = Arc::new(Cache {
+            inner: Default::default(),
+        });
 
         tokio::spawn(reaper(c.clone()));
 
@@ -55,6 +53,9 @@ pub async fn reaper(cache: Arc<Cache>) {
     loop {
         interval.tick().await;
         let now = Instant::now();
-        cache.inner.write().retain(|_, value| (value.cached_at - now).as_secs() < *CACHE_DURATION);
+        cache
+            .inner
+            .write()
+            .retain(|_, value| (value.cached_at - now).as_secs() < *CACHE_DURATION);
     }
 }

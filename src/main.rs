@@ -1,6 +1,6 @@
+mod cache;
 mod error;
 mod ratelimiter_map;
-mod cache;
 
 use error::RequestError;
 use http::{
@@ -32,16 +32,16 @@ use twilight_http_ratelimiting::{
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 
+use hyper::body::to_bytes;
 #[cfg(feature = "expose-metrics")]
 use std::{future::Future, pin::Pin, time::Instant};
-use hyper::body::to_bytes;
 
+use crate::cache::Cache;
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
 use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use crate::cache::Cache;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -127,7 +127,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     if uri.path() == "/metrics" {
                         handle_metrics(handle.clone())
                     } else {
-                        Box::pin(handle_request(client.clone(), ratelimiter, token, incoming, cache.clone()))
+                        Box::pin(handle_request(
+                            client.clone(),
+                            ratelimiter,
+                            token,
+                            incoming,
+                            cache.clone(),
+                        ))
                     }
                 }
 
@@ -268,7 +274,7 @@ async fn handle_request(
     ratelimiter: InMemoryRatelimiter,
     token: String,
     mut request: Request<Body>,
-    cache: Arc<Cache>
+    cache: Arc<Cache>,
 ) -> Result<Response<Body>, RequestError> {
     trace!("Incoming request: {:?}", request);
 
@@ -307,9 +313,9 @@ async fn handle_request(
 
     // check our cache for some paths
     if matches!(path, Path::InvitesCode | Path::UsersId) {
-       if let Some(cached) = cache.get(&api_route) {
-           return Ok(Response::new(Body::from(cached)))
-       }
+        if let Some(cached) = cache.get(&api_route) {
+            return Ok(Response::new(Body::from(cached)));
+        }
     }
 
     let header_sender = match ratelimiter.wait_for_ticket(path).await {
