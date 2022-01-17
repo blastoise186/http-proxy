@@ -40,7 +40,7 @@ impl Cache {
 
     pub fn get(&self, key: &str) -> Option<Vec<u8>> {
         if let Some(cached) = self.inner.read().get(key) {
-            if (cached.cached_at - Instant::now()).as_secs() < *CACHE_DURATION {
+            if (Instant::now() - cached.cached_at).as_secs() < *CACHE_DURATION {
                 return Some(cached.bytes.clone());
             }
         }

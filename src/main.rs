@@ -312,7 +312,7 @@ async fn handle_request(
     let api_route = format!("{}{}", api_path, trimmed_path);
 
     // check our cache for some paths
-    if matches!(path, Path::InvitesCode | Path::UsersId) {
+    if matches!(path, Path::InvitesCode | Path::UsersId if !api_route.contains("@me")) {
         if let Some(cached) = cache.get(&api_route) {
             debug!("{} {} ({}): {}", m, p, request_path, "from cache");
             return Ok(Response::new(Body::from(cached)));
