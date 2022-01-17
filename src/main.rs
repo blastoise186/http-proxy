@@ -311,9 +311,9 @@ async fn handle_request(
 
     // check our cache for some paths
     if matches!(path, Path::InvitesCode | Path::UsersId if !api_route.contains("@me")) {
-        if let Some((bytes, headers)) = cache.get(&api_route) {
-            debug!("{} {} ({}): {}", m, p, request_path, "from cache");
-            let mut builder = Response::builder();
+        if let Some((bytes, headers, statuscode)) = cache.get(&api_route) {
+            debug!("{} {} ({}): {} from cache", m, p, request_path, statuscode);
+            let mut builder = Response::builder().status(statuscode);
             for (name, value) in headers {
                 // no clue why this could ever be None, but just in case let's check it
                 if let Some(name) = name {
@@ -415,7 +415,7 @@ async fn handle_request(
 
     if resp.status().is_success() || resp.status() == 404 {
         let (parts, body) = resp.into_parts();
-        match to_bytes(body).await {
+        return match to_bytes(body).await {
             Ok(bytes) => {
                 let vec = bytes.to_vec();
                 let mut headers = parts.headers.clone();
@@ -423,13 +423,13 @@ async fn handle_request(
                 headers.remove("x-ratelimit-remaining");
                 headers.remove("x-ratelimit-reset");
                 headers.remove("x-ratelimit-reset-after");
-                cache.insert(api_route, vec, headers);
+                cache.insert(api_route, vec, headers, parts.status);
 
-                return Ok(Response::from_parts(parts, Body::from(bytes)));
+                Ok(Response::from_parts(parts, Body::from(bytes)))
             }
             Err(e) => {
                 error!("Error when receiving request body from discord: {:?}", e);
-                return Err(RequestError::RequestIssue { source: e });
+                Err(RequestError::RequestIssue { source: e })
             }
         };
     };
