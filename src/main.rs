@@ -314,6 +314,7 @@ async fn handle_request(
     // check our cache for some paths
     if matches!(path, Path::InvitesCode | Path::UsersId) {
         if let Some(cached) = cache.get(&api_route) {
+            debug!("{} {} ({}): {}", m, p, request_path, "from cache");
             return Ok(Response::new(Body::from(cached)));
         }
     }

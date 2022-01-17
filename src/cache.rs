@@ -56,6 +56,6 @@ pub async fn reaper(cache: Arc<Cache>) {
         cache
             .inner
             .write()
-            .retain(|_, value| (value.cached_at - now).as_secs() < *CACHE_DURATION);
+            .retain(|_, value| (now - value.cached_at).as_secs() < *CACHE_DURATION);
     }
 }
