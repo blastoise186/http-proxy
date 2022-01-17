@@ -3,7 +3,10 @@ mod error;
 mod ratelimiter_map;
 
 use error::RequestError;
-use http::{header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE}, HeaderValue, Method as HttpMethod, Uri};
+use http::{
+    header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE},
+    HeaderValue, Method as HttpMethod, Uri,
+};
 use hyper::{
     body::Body,
     server::{conn::AddrStream, Server},
@@ -85,15 +88,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address = SocketAddr::from((host, port));
 
     #[cfg(feature = "expose-metrics")]
-        let handle: Arc<PrometheusHandle>;
+    let handle: Arc<PrometheusHandle>;
 
     #[cfg(feature = "expose-metrics")]
-        {
-            let recorder = PrometheusBuilder::new().build();
-            handle = Arc::new(recorder.handle());
-            metrics::set_boxed_recorder(Box::new(recorder))
-                .expect("Failed to create metrics receiver!");
-        }
+    {
+        let recorder = PrometheusBuilder::new().build();
+        handle = Arc::new(recorder.handle());
+        metrics::set_boxed_recorder(Box::new(recorder))
+            .expect("Failed to create metrics receiver!");
+    }
 
     let cache = Cache::new();
 
@@ -106,7 +109,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
-            let handle = handle.clone();
+        let handle = handle.clone();
         let cache = cache.clone();
 
         async move {
@@ -118,26 +121,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
 
                 #[cfg(feature = "expose-metrics")]
-                    {
-                        let uri = incoming.uri();
+                {
+                    let uri = incoming.uri();
 
-                        if uri.path() == "/metrics" {
-                            handle_metrics(handle.clone())
-                        } else {
-                            Box::pin(handle_request(
-                                client.clone(),
-                                ratelimiter,
-                                token,
-                                incoming,
-                                cache.clone(),
-                            ))
-                        }
+                    if uri.path() == "/metrics" {
+                        handle_metrics(handle.clone())
+                    } else {
+                        Box::pin(handle_request(
+                            client.clone(),
+                            ratelimiter,
+                            token,
+                            incoming,
+                            cache.clone(),
+                        ))
                     }
+                }
 
                 #[cfg(not(feature = "expose-metrics"))]
-                    {
-                        handle_request(client.clone(), ratelimiter, token, incoming, cache.clone())
-                    }
+                {
+                    handle_request(client.clone(), ratelimiter, token, incoming, cache.clone())
+                }
             }))
         }
     });
@@ -170,8 +173,7 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = sigint.recv() => {},
         _ = sigterm.recv() => {},
-    }
-    ;
+    };
 }
 
 fn path_name(path: &Path) -> &'static str {
@@ -325,8 +327,7 @@ async fn handle_request(
                 Err(e) => {
                     error!("Failed to re-assemble body: {}", e)
                 }
-            }
-            ;
+            };
         }
     }
 
@@ -372,7 +373,7 @@ async fn handle_request(
     *request.uri_mut() = uri;
 
     #[cfg(feature = "expose-metrics")]
-        let start = Instant::now();
+    let start = Instant::now();
 
     let resp = match client.request(request).await {
         Ok(response) => response,
@@ -387,31 +388,30 @@ async fn handle_request(
             .into_iter()
             .map(|(k, v)| (k.as_str(), v.as_bytes())),
     )
-        .ok();
+    .ok();
 
     if header_sender.headers(ratelimit_headers).is_err() {
         error!("Error when sending ratelimit headers to ratelimiter");
     };
 
     #[cfg(feature = "expose-metrics")]
-        let end = Instant::now();
+    let end = Instant::now();
 
     trace!("Response: {:?}", resp);
 
     let status = resp.status();
     #[cfg(feature = "expose-metrics")]
-        {
-            let scope = resp
-                .headers()
-                .get("X-RateLimit-Scope")
-                .and_then(|header| header.to_str().ok())
-                .unwrap_or("")
-                .to_string();
-            histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope);
-        }
+    {
+        let scope = resp
+            .headers()
+            .get("X-RateLimit-Scope")
+            .and_then(|header| header.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope);
+    }
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
-
 
     if resp.status().is_success() || resp.status() == 404 {
         let (parts, body) = resp.into_parts();
@@ -434,14 +434,13 @@ async fn handle_request(
         };
     };
 
-
     Ok(resp)
 }
 
 #[cfg(feature = "expose-metrics")]
 fn handle_metrics(
     handle: Arc<PrometheusHandle>,
-) -> Pin<Box<dyn Future<Output=Result<Response<Body>, RequestError>> + Send>> {
+) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
     Box::pin(async move {
         Ok(Response::builder()
             .body(Body::from(handle.render()))
