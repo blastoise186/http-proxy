@@ -35,6 +35,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use hyper::body::to_bytes;
 #[cfg(feature = "expose-metrics")]
 use std::{future::Future, pin::Pin, time::Instant};
+use std::ops::Not;
 
 use crate::cache::Cache;
 use lazy_static::lazy_static;
@@ -124,10 +125,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 {
                     let uri = incoming.uri();
 
-                    if uri.path() == "/metrics" {
-                        handle_metrics(handle.clone())
-                    } else {
-                        Box::pin(handle_request(
+                    match uri.path() {
+                        "/metrics" => handle_metrics(handle.clone()),
+                        "/health" => handle_health(),
+                        "/cache" => cache.cache_status(),
+                        _ => Box::pin(handle_request(
                             client.clone(),
                             ratelimiter,
                             token,
@@ -312,26 +314,31 @@ async fn handle_request(
     let api_route = format!("{}{}", api_path, trimmed_path);
 
     // check our cache for some paths
-    if matches!(path, Path::InvitesCode | Path::UsersId if !api_route.contains("@me")) {
-        if let Some((bytes, headers, statuscode)) = cache.get(&api_route) {
-            debug!("{} {} ({}): {} from cache", m, p, request_path, statuscode);
-            let mut builder = Response::builder().status(statuscode);
-            for (name, value) in headers {
-                // no clue why this could ever be None, but just in case let's check it
-                if let Some(name) = name {
-                    builder = builder.header(name, value)
-                }
+    let cached_reply = match path {
+        Path::InvitesCode => cache.get_invite(&api_route),
+        Path::UsersId => api_route.contains("@me").not().then(|| cache.get_user(&api_route)).flatten(),
+        _ => None,
+    };
+
+    if let Some((bytes, headers, statuscode)) = cached_reply {
+        debug!("{} {} ({}): {} from cache", m, p, request_path, statuscode);
+        let mut builder = Response::builder().status(statuscode);
+        for (name, value) in headers {
+            // no clue why this could ever be None, but just in case let's check it
+            if let Some(name) = name {
+                builder = builder.header(name, value)
             }
-            match builder.body(Body::from(bytes)) {
-                Ok(response) => return Ok(response),
-                Err(e) => {
-                    error!("Failed to re-assemble body: {}", e)
-                }
-            };
         }
+        match builder.body(Body::from(bytes)) {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                error!("Failed to re-assemble body: {}", e)
+            }
+        };
     }
 
-    let header_sender = match ratelimiter.wait_for_ticket(path).await {
+
+    let header_sender = match ratelimiter.wait_for_ticket(path.clone()).await {
         Ok(sender) => sender,
         Err(e) => {
             error!("Failed to receive ticket for ratelimiting: {:?}", e);
@@ -423,8 +430,12 @@ async fn handle_request(
                 headers.remove("x-ratelimit-remaining");
                 headers.remove("x-ratelimit-reset");
                 headers.remove("x-ratelimit-reset-after");
-                cache.insert(api_route, vec, headers, parts.status);
 
+                match path {
+                    Path::InvitesCode => cache.insert_invite(api_route, vec, headers, parts.status),
+                    Path::UsersId => {api_route.contains("@me").not().then(|| cache.insert_user(api_route, vec, headers, parts.status));},
+                    _ => {}
+                }
                 Ok(Response::from_parts(parts, Body::from(bytes)))
             }
             Err(e) => {
@@ -444,6 +455,14 @@ fn handle_metrics(
     Box::pin(async move {
         Ok(Response::builder()
             .body(Body::from(handle.render()))
+            .unwrap())
+    })
+}
+
+fn handle_health() -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
+    Box::pin(async move {
+        Ok(Response::builder()
+            .body(Body::from("Proxy running!"))
             .unwrap())
     })
 }
