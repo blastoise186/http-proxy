@@ -34,7 +34,8 @@ use tokio::signal::unix::{signal, SignalKind};
 
 use hyper::body::to_bytes;
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, time::Instant};
+use std::time::Instant;
+use std::{future::Future, pin::Pin};
 use std::ops::Not;
 
 use crate::cache::Cache;
