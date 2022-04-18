@@ -1,12 +1,12 @@
-use crate::{CACHE_DURATION, RequestError};
+use crate::{RequestError, CACHE_DURATION};
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
+use hyper::Body;
 use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use hyper::Body;
-use rustc_hash::FxHashMap;
 use tokio::time::{interval, Instant};
 
 pub struct CachedResponse {
@@ -40,7 +40,7 @@ impl Cache {
     pub fn new() -> Arc<Cache> {
         let c = Arc::new(Cache {
             users: Default::default(),
-            invites: Default::default()
+            invites: Default::default(),
         });
 
         tokio::spawn(reaper(c.clone()));
@@ -76,16 +76,14 @@ impl Cache {
         get(&self.users, key)
     }
 
-
-
-    pub fn cache_status(&self) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
+    pub fn cache_status(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
         let users = self.users.read().len();
         let invites = self.invites.read().len();
         Box::pin(async move {
             let assembled = format!("{{\"users\": {users}, \"invites\": {invites}}}");
-            Ok(Response::builder()
-                .body(Body::from(assembled))
-                .unwrap())
+            Ok(Response::builder().body(Body::from(assembled)).unwrap())
         })
     }
 }
@@ -106,8 +104,10 @@ fn clean_cache(cache: &RwLock<FxHashMap<String, CachedResponse>>) {
         .retain(|_, value| (now - value.cached_at).as_secs() < *CACHE_DURATION);
 }
 
-
-pub fn get(cache: &RwLock<FxHashMap<String, CachedResponse>>, key: &str) -> Option<(Vec<u8>, HeaderMap<HeaderValue>, StatusCode)> {
+pub fn get(
+    cache: &RwLock<FxHashMap<String, CachedResponse>>,
+    key: &str,
+) -> Option<(Vec<u8>, HeaderMap<HeaderValue>, StatusCode)> {
     if let Some(cached) = cache.read().get(key) {
         if (Instant::now() - cached.cached_at).as_secs() < *CACHE_DURATION {
             return Some((
@@ -119,7 +119,6 @@ pub fn get(cache: &RwLock<FxHashMap<String, CachedResponse>>, key: &str) -> Opti
     }
     None
 }
-
 
 pub fn insert(
     cache: &RwLock<FxHashMap<String, CachedResponse>>,

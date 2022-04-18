@@ -33,10 +33,10 @@ use twilight_http_ratelimiting::{
 use tokio::signal::unix::{signal, SignalKind};
 
 use hyper::body::to_bytes;
+use std::ops::Not;
 #[cfg(feature = "expose-metrics")]
 use std::time::Instant;
 use std::{future::Future, pin::Pin};
-use std::ops::Not;
 
 use crate::cache::Cache;
 use lazy_static::lazy_static;
@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             token,
                             incoming,
                             cache.clone(),
-                        ))
+                        )),
                     }
                 }
 
@@ -317,7 +317,11 @@ async fn handle_request(
     // check our cache for some paths
     let cached_reply = match path {
         Path::InvitesCode => cache.get_invite(&api_route),
-        Path::UsersId => api_route.contains("@me").not().then(|| cache.get_user(&api_route)).flatten(),
+        Path::UsersId => api_route
+            .contains("@me")
+            .not()
+            .then(|| cache.get_user(&api_route))
+            .flatten(),
         _ => None,
     };
 
@@ -337,7 +341,6 @@ async fn handle_request(
             }
         };
     }
-
 
     let header_sender = match ratelimiter.wait_for_ticket(path.clone()).await {
         Ok(sender) => sender,
@@ -434,7 +437,12 @@ async fn handle_request(
 
                 match path {
                     Path::InvitesCode => cache.insert_invite(api_route, vec, headers, parts.status),
-                    Path::UsersId => {api_route.contains("@me").not().then(|| cache.insert_user(api_route, vec, headers, parts.status));},
+                    Path::UsersId => {
+                        api_route
+                            .contains("@me")
+                            .not()
+                            .then(|| cache.insert_user(api_route, vec, headers, parts.status));
+                    }
                     _ => {}
                 }
                 Ok(Response::from_parts(parts, Body::from(bytes)))
