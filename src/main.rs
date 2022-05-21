@@ -36,7 +36,6 @@ use hyper::body::to_bytes;
 use std::ops::Not;
 #[cfg(feature = "expose-metrics")]
 use std::time::Instant;
-use std::{future::Future, pin::Pin};
 
 use crate::cache::Cache;
 use lazy_static::lazy_static;
@@ -90,7 +89,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address = SocketAddr::from((host, port));
 
     #[cfg(feature = "expose-metrics")]
-    let handle: Arc<PrometheusHandle>;
+        let handle: Arc<PrometheusHandle>;
 
     #[cfg(feature = "expose-metrics")]
     {
@@ -111,7 +110,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
-        let handle = handle.clone();
+            let handle = handle.clone();
         let cache = cache.clone();
 
         async move {
@@ -124,26 +123,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let client = client.clone();
 
                 #[cfg(feature = "expose-metrics")]
-                {
                     let handle = handle.clone();
-
-                    match uri.path() {
-                        "/metrics" => handle_metrics(handle.clone()),
-                        "/health" => handle_health(),
-                        "/cache" => cache.cache_status(),
-                        _ => Box::pin(handle_request(
-                            client.clone(),
-                            ratelimiter,
-                            token,
-                            incoming,
-                            cache.clone(),
-                        )),
-                    }
-                }
-
-                #[cfg(not(feature = "expose-metrics"))]
-                {
-                    handle_request(client.clone(), ratelimiter, token, incoming, cache.clone())
+                let cache = cache.clone();
+                async move {
+                    Ok::<_, Infallible>({
+                        match incoming.uri().path() {
+                            #[cfg(feature = "expose-metrics")]
+                            "/metrics" => handle_metrics(handle),
+                            "/health" => handle_health(),
+                            "/cache" => cache.cache_status(),
+                            _ => handle_request(
+                                client,
+                                ratelimiter,
+                                token,
+                                incoming,
+                                cache,
+                            )
+                                .await
+                                .unwrap_or_else(|err| err.as_response()),
+                        }
+                    })
                 }
             }))
         }
@@ -177,7 +176,8 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = sigint.recv() => {},
         _ = sigterm.recv() => {},
-    };
+    }
+    ;
 }
 
 fn path_name(path: &Path) -> &'static str {
@@ -389,7 +389,7 @@ async fn handle_request(
     *request.uri_mut() = uri;
 
     #[cfg(feature = "expose-metrics")]
-    let start = Instant::now();
+        let start = Instant::now();
 
     let resp = match client.request(request).await {
         Ok(response) => response,
@@ -404,14 +404,14 @@ async fn handle_request(
             .into_iter()
             .map(|(k, v)| (k.as_str(), v.as_bytes())),
     )
-    .ok();
+        .ok();
 
     if header_sender.headers(ratelimit_headers).is_err() {
         error!("Error when sending ratelimit headers to ratelimiter");
     };
 
     #[cfg(feature = "expose-metrics")]
-    let end = Instant::now();
+        let end = Instant::now();
 
     trace!("Response: {:?}", resp);
 
@@ -469,10 +469,8 @@ fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
         .unwrap()
 }
 
-fn handle_health() -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
-    Box::pin(async move {
-        Ok(Response::builder()
-            .body(Body::from("Proxy running!"))
-            .unwrap())
-    })
+fn handle_health() -> Response<Body> {
+    Response::builder()
+        .body(Body::from("Proxy running!"))
+        .unwrap()
 }

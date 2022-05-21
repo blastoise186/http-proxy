@@ -1,10 +1,8 @@
-use crate::{RequestError, CACHE_DURATION};
+use crate::{CACHE_DURATION};
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use hyper::Body;
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{interval, Instant};
@@ -78,13 +76,11 @@ impl Cache {
 
     pub fn cache_status(
         &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
+    ) -> Response<Body> {
         let users = self.users.read().len();
         let invites = self.invites.read().len();
-        Box::pin(async move {
             let assembled = format!("{{\"users\": {users}, \"invites\": {invites}}}");
-            Ok(Response::builder().body(Body::from(assembled)).unwrap())
-        })
+            Response::builder().body(Body::from(assembled)).unwrap()
     }
 }
 
