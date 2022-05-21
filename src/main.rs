@@ -16,7 +16,7 @@ use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_trust_dns::{new_trust_dns_http_connector, TrustDnsHttpConnector};
 use ratelimiter_map::RatelimiterMap;
 use std::{
-    convert::TryFrom,
+    convert::{Infallible, TryFrom},
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "expose-metrics")]
     {
-        let recorder = PrometheusBuilder::new().build();
+        let recorder = PrometheusBuilder::new().build_recorder();
         handle = Arc::new(recorder.handle());
         metrics::set_boxed_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
@@ -115,16 +115,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let cache = cache.clone();
 
         async move {
-            Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
+            Ok::<_, Infallible>(service::service_fn(move |incoming: Request<Body>| {
                 let token = incoming
                     .headers()
                     .get("authorization")
                     .and_then(|value| value.to_str().ok());
                 let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
+                let client = client.clone();
 
                 #[cfg(feature = "expose-metrics")]
                 {
-                    let uri = incoming.uri();
+                    let handle = handle.clone();
 
                     match uri.path() {
                         "/metrics" => handle_metrics(handle.clone()),
@@ -181,26 +182,36 @@ async fn shutdown_signal() {
 
 fn path_name(path: &Path) -> &'static str {
     match path {
+        Path::ApplicationCommand(..) => "Application commands",
+        Path::ApplicationCommandId(..) => "Application command",
+        Path::ApplicationGuildCommand(..) => "Application commands in guild",
+        Path::ApplicationGuildCommandId(..) => "Application command in guild",
         Path::ChannelsId(..) => "Channel",
+        Path::ChannelsIdFollowers(..) => "Channel followers",
         Path::ChannelsIdInvites(..) => "Channel invite",
         Path::ChannelsIdMessages(..) | Path::ChannelsIdMessagesId(..) => "Channel message",
         Path::ChannelsIdMessagesBulkDelete(..) => "Bulk delete message",
+        Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
         Path::ChannelsIdMessagesIdReactions(..) => "Message reaction",
         Path::ChannelsIdMessagesIdReactionsUserIdType(..) => "Message reaction for user",
+        Path::ChannelsIdMessagesIdThreads(_) => "Threads of a specific message",
         Path::ChannelsIdPermissionsOverwriteId(..) => "Channel permission override",
         Path::ChannelsIdPins(..) => "Channel pins",
         Path::ChannelsIdPinsMessageId(..) => "Specific channel pin",
+        Path::ChannelsIdRecipients(..) => "Channel recipients",
+        Path::ChannelsIdThreadMembers(_) => "Thread members",
+        Path::ChannelsIdThreads(_) => "Channel threads",
         Path::ChannelsIdTyping(..) => "Typing indicator",
         Path::ChannelsIdWebhooks(..) | Path::WebhooksId(..) => "Webhook",
         Path::Gateway => "Gateway",
         Path::GatewayBot => "Gateway bot info",
         Path::Guilds => "Guilds",
         Path::GuildsId(..) => "Guild",
-        Path::GuildsIdBans(..) => "Guild bans",
         Path::GuildsIdAuditLogs(..) => "Guild audit logs",
+        Path::GuildsIdBans(..) => "Guild bans",
+        Path::GuildsIdBansId(..) => "Specific guild ban",
         Path::GuildsIdBansUserId(..) => "Guild ban for user",
         Path::GuildsIdChannels(..) => "Guild channel",
-        Path::GuildsIdWidget(..) => "Guild widget",
         Path::GuildsIdEmojis(..) => "Guild emoji",
         Path::GuildsIdEmojisId(..) => "Specific guild emoji",
         Path::GuildsIdIntegrations(..) => "Guild integrations",
@@ -211,46 +222,40 @@ fn path_name(path: &Path) -> &'static str {
         Path::GuildsIdMembersId(..) => "Specific guild member",
         Path::GuildsIdMembersIdRolesId(..) => "Guild member role",
         Path::GuildsIdMembersMeNick(..) => "Modify own nickname",
+        Path::GuildsIdMembersSearch(..) => "Search guild members",
         Path::GuildsIdPreview(..) => "Guild preview",
         Path::GuildsIdPrune(..) => "Guild prune",
         Path::GuildsIdRegions(..) => "Guild region",
         Path::GuildsIdRoles(..) => "Guild roles",
         Path::GuildsIdRolesId(..) => "Specific guild role",
-        Path::GuildsIdVanityUrl(..) => "Guild vanity invite",
-        Path::GuildsIdWebhooks(..) => "Guild webhooks",
-        Path::InvitesCode => "Invite info",
-        Path::UsersId => "User info",
-        Path::UsersIdConnections => "User connections",
-        Path::UsersIdChannels => "User channels",
-        Path::UsersIdGuilds => "User in guild",
-        Path::UsersIdGuildsId => "Guild from user",
-        Path::VoiceRegions => "Voice region list",
-        Path::OauthApplicationsMe => "Current application info",
-        Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
-        Path::ChannelsIdRecipients(..) => "Channel recipients",
-        Path::ChannelsIdFollowers(..) => "Channel followers",
-        Path::GuildsIdBansId(..) => "Specific guild ban",
-        Path::GuildsIdMembersSearch(..) => "Search guild members",
+        Path::GuildsIdScheduledEvents(_) => "Scheduled events in guild",
+        Path::GuildsIdScheduledEventsId(_) => "Scheduled event in guild",
+        Path::GuildsIdScheduledEventsIdUsers(_) => "Users of a scheduled event",
+        Path::GuildsIdStickers(_) => "Guild stickers",
         Path::GuildsIdTemplates(..) => "Guild templates",
         Path::GuildsIdTemplatesCode(..) => "Specific guild template",
-        Path::GuildsIdVoiceStates(..) => "Guild voice states",
-        Path::GuildsIdWelcomeScreen(..) => "Guild welcome screen",
-        Path::WebhooksIdTokenMessagesId(..) => "Specific webhook message",
-        Path::ApplicationCommand(..) => "Application commands",
-        Path::ApplicationCommandId(..) => "Application command",
-        Path::ApplicationGuildCommand(..) => "Application commands in guild",
-        Path::ApplicationGuildCommandId(..) => "Application command in guild",
-        Path::InteractionCallback(..) => "Interaction callback",
-        Path::StageInstances => "Stage instances",
-        Path::ChannelsIdMessagesIdThreads(_) => "Threads of a specific message",
-        Path::ChannelsIdThreadMembers(_) => "Thread members",
-        Path::ChannelsIdThreads(_) => "Channel threads",
-        Path::GuildsIdStickers(_) => "Guild stickers",
-        Path::GuildsTemplatesCode(_) => "Specific guild template",
         Path::GuildsIdThreads(_) => "Guild threads",
+        Path::GuildsIdVanityUrl(..) => "Guild vanity invite",
+        Path::GuildsIdVoiceStates(..) => "Guild voice states",
+        Path::GuildsIdWebhooks(..) => "Guild webhooks",
+        Path::GuildsIdWelcomeScreen(..) => "Guild welcome screen",
+        Path::GuildsIdWidget(..) => "Guild widget",
+        Path::GuildsTemplatesCode(_) => "Specific guild template",
+        Path::InteractionCallback(..) => "Interaction callback",
+        Path::InvitesCode => "Invite info",
+        Path::OauthApplicationsMe => "Current application info",
+        Path::StageInstances => "Stage instances",
         Path::StickerPacks => "Sticker packs",
         Path::Stickers => "Stickers",
+        Path::UsersId => "User info",
+        Path::UsersIdChannels => "User channels",
+        Path::UsersIdConnections => "User connections",
+        Path::UsersIdGuilds => "User in guild",
+        Path::UsersIdGuildsId => "Guild from user",
+        Path::UsersIdGuildsIdMember => "Member of a guild",
+        Path::VoiceRegions => "Voice region list",
         Path::WebhooksIdToken(_, _) => "Webhook",
+        Path::WebhooksIdTokenMessagesId(..) => "Specific webhook message",
         _ => "Unknown path!",
     }
 }
@@ -458,14 +463,10 @@ async fn handle_request(
 }
 
 #[cfg(feature = "expose-metrics")]
-fn handle_metrics(
-    handle: Arc<PrometheusHandle>,
-) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
-    Box::pin(async move {
-        Ok(Response::builder()
-            .body(Body::from(handle.render()))
-            .unwrap())
-    })
+fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
+    Response::builder()
+        .body(Body::from(handle.render()))
+        .unwrap()
 }
 
 fn handle_health() -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
