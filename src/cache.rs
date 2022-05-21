@@ -1,4 +1,4 @@
-use crate::{CACHE_DURATION};
+use crate::CACHE_DURATION;
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use hyper::Body;
 use parking_lot::RwLock;
@@ -74,13 +74,11 @@ impl Cache {
         get(&self.users, key)
     }
 
-    pub fn cache_status(
-        &self,
-    ) -> Response<Body> {
+    pub fn cache_status(&self) -> Response<Body> {
         let users = self.users.read().len();
         let invites = self.invites.read().len();
-            let assembled = format!("{{\"users\": {users}, \"invites\": {invites}}}");
-            Response::builder().body(Body::from(assembled)).unwrap()
+        let assembled = format!("{{\"users\": {users}, \"invites\": {invites}}}");
+        Response::builder().body(Body::from(assembled)).unwrap()
     }
 }
 
