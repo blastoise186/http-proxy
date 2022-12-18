@@ -61,7 +61,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .with_ansi(false)
         .init();
 
     let host_raw = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
