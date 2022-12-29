@@ -14,15 +14,16 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 twilight-http-ratelimiting = "0.13"
+ahash = "0.8"
+lazy_static = { version = "1.4"}
 
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.20", optional = true }
 metrics-exporter-prometheus = { version = "0.11", default-features = false, optional = true }
 metrics-util = { version = "0.14", optional = true }
-lazy_static = { version = "1.4", optional = true }
 
 [features]
-expose-metrics = ["metrics", "metrics-exporter-prometheus", "metrics-util", "lazy_static"]
+expose-metrics = ["metrics", "metrics-exporter-prometheus", "metrics-util"]
 
 [profile.release]
 codegen-units = 1

@@ -1,3 +1,4 @@
+mod cache;
 mod error;
 mod ratelimiter_map;
 
@@ -7,7 +8,7 @@ use http::{
     HeaderValue, Method as HttpMethod, Uri,
 };
 use hyper::{
-    body::Body,
+    body::{to_bytes, Body},
     server::{conn::AddrStream, Server},
     service, Client, Request, Response,
 };
@@ -19,6 +20,7 @@ use std::{
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
+    ops::Not,
     str::FromStr,
     sync::Arc,
 };
@@ -44,6 +46,8 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::MetricKindMask;
 #[cfg(feature = "expose-metrics")]
 use std::time::Duration;
+
+use crate::cache::Cache;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -138,6 +142,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .expect("Failed to create metrics receiver!");
     }
 
+    let cache = Cache::new();
+
     // The closure inside `make_service_fn` is run for each connection,
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
@@ -148,6 +154,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
+        let cache = cache.clone();
 
         async move {
             Ok::<_, Infallible>(service::service_fn(move |incoming: Request<Body>| {
@@ -159,31 +166,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let client = client.clone();
 
                 #[cfg(feature = "expose-metrics")]
-                {
-                    let handle = handle.clone();
+                let handle = handle.clone();
+                let cache = cache.clone();
 
-                    async move {
-                        Ok::<_, Infallible>({
-                            if incoming.uri().path() == "/metrics" {
-                                handle_metrics(handle)
-                            } else {
-                                handle_request(client, ratelimiter, token, incoming)
-                                    .await
-                                    .unwrap_or_else(|err| err.as_response())
-                            }
-                        })
-                    }
-                }
-
-                #[cfg(not(feature = "expose-metrics"))]
-                {
-                    async move {
-                        Ok::<_, Infallible>(
-                            handle_request(client, ratelimiter, token, incoming)
+                async move {
+                    Ok::<_, Infallible>({
+                        match incoming.uri().path() {
+                            #[cfg(feature = "expose-metrics")]
+                            "/metrics" => handle_metrics(handle),
+                            "/health" => handle_health(),
+                            _ => handle_request(client, ratelimiter, token, incoming, cache)
                                 .await
                                 .unwrap_or_else(|err| err.as_response()),
-                        )
-                    }
+                        }
+                    })
                 }
             }))
         }
@@ -322,6 +318,7 @@ async fn handle_request(
     ratelimiter: InMemoryRatelimiter,
     token: String,
     mut request: Request<Body>,
+    cache: Arc<Cache>,
 ) -> Result<Response<Body>, RequestError> {
     trace!("Incoming request: {:?}", request);
 
@@ -358,7 +355,37 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     let _guard = InProgressGuard::new(m, &p);
 
-    let header_sender = match ratelimiter.wait_for_ticket(path).await {
+    let api_route = format!("{}{}", api_path, trimmed_path);
+
+    // check our cache for some paths
+    let cached_reply = match path {
+        Path::InvitesCode => cache.get_invite(&api_route),
+        Path::UsersId => api_route
+            .contains("@me")
+            .not()
+            .then(|| cache.get_user(&api_route))
+            .flatten(),
+        _ => None,
+    };
+
+    if let Some((bytes, headers, statuscode)) = cached_reply {
+        debug!("{} {} ({}): {} from cache", m, p, request_path, statuscode);
+        let mut builder = Response::builder().status(statuscode);
+        for (name, value) in headers {
+            // no clue why this could ever be None, but just in case let's check it
+            if let Some(name) = name {
+                builder = builder.header(name, value)
+            }
+        }
+        match builder.body(Body::from(bytes)) {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                error!("Failed to re-assemble body: {}", e)
+            }
+        };
+    }
+
+    let header_sender = match ratelimiter.wait_for_ticket(path.clone()).await {
         Ok(sender) => sender,
         Err(e) => {
             error!("Failed to receive ticket for ratelimiting: {:?}", e);
@@ -383,7 +410,7 @@ async fn handle_request(
     request.headers_mut().remove(TRANSFER_ENCODING);
     request.headers_mut().remove(UPGRADE);
 
-    let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
+    let mut uri_string = format!("https://discord.com{}", api_route);
 
     if let Some(query) = request.uri().query() {
         uri_string.push('?');
@@ -440,6 +467,36 @@ async fn handle_request(
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
 
+    if resp.status().is_success() || resp.status() == 404 {
+        let (parts, body) = resp.into_parts();
+        return match to_bytes(body).await {
+            Ok(bytes) => {
+                let vec = bytes.to_vec();
+                let mut headers = parts.headers.clone();
+                headers.remove("x-ratelimit-bucket");
+                headers.remove("x-ratelimit-remaining");
+                headers.remove("x-ratelimit-reset");
+                headers.remove("x-ratelimit-reset-after");
+
+                match path {
+                    Path::InvitesCode => cache.insert_invite(api_route, vec, headers, parts.status),
+                    Path::UsersId => {
+                        api_route
+                            .contains("@me")
+                            .not()
+                            .then(|| cache.insert_user(api_route, vec, headers, parts.status));
+                    }
+                    _ => {}
+                }
+                Ok(Response::from_parts(parts, Body::from(bytes)))
+            }
+            Err(e) => {
+                error!("Error when receiving request body from discord: {:?}", e);
+                Err(RequestError::RequestIssue { source: e })
+            }
+        };
+    };
+
     Ok(resp)
 }
 
@@ -465,4 +522,10 @@ pub fn parse_env<T: FromStr>(key: &str) -> Option<T> {
             None
         }
     })
+}
+
+fn handle_health() -> Response<Body> {
+    Response::builder()
+        .body(Body::from("Proxy running!"))
+        .unwrap()
 }
