@@ -37,7 +37,7 @@ use std::time::Instant;
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
-use metrics::histogram;
+use metrics::{decrement_gauge, histogram, increment_gauge};
 #[cfg(feature = "expose-metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 #[cfg(feature = "expose-metrics")]
@@ -49,6 +49,35 @@ use std::time::Duration;
 lazy_static! {
     static ref METRIC_KEY: String =
         env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
+}
+
+#[cfg(feature = "expose-metrics")]
+lazy_static! {
+    static ref METRIC_KEY_IN_PROGRESS: String = format!(
+        "{}_in_progress",
+        env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into())
+    );
+}
+
+#[cfg(feature = "expose-metrics")]
+struct InProgressGuard {
+    method: &'static str,
+    route: &'static str,
+}
+
+#[cfg(feature = "expose-metrics")]
+impl InProgressGuard {
+    pub fn new(method: &'static str, route: &'static str) -> InProgressGuard {
+        increment_gauge!(METRIC_KEY_IN_PROGRESS.as_str(), 1f64, "method"=>method, "route"=>route);
+        InProgressGuard { method, route }
+    }
+}
+
+#[cfg(feature = "expose-metrics")]
+impl Drop for InProgressGuard {
+    fn drop(&mut self) {
+        decrement_gauge!(METRIC_KEY_IN_PROGRESS.as_str(), 1f64, "method" => self.method, "route"=>self.route)
+    }
 }
 
 #[tokio::main]
@@ -318,6 +347,8 @@ async fn handle_request(
     };
 
     let p = path_name(&path);
+    #[cfg(feature = "expose-metrics")]
+    let _guard = InProgressGuard::new(m, &p);
 
     let header_sender = match ratelimiter.wait_for_ticket(path).await {
         Ok(sender) => sender,
@@ -396,7 +427,7 @@ async fn handle_request(
             .and_then(|header| header.to_str().ok())
             .unwrap_or("")
             .to_string();
-        histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope);
+        histogram!(METRIC_KEY.as_str(), end - start, "method"=>m, "route"=>p, "status"=>status.to_string(), "scope" => scope);
     }
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
