@@ -60,6 +60,11 @@ lazy_static! {
 }
 
 #[cfg(feature = "expose-metrics")]
+lazy_static! {
+    static ref TRACK_IN_PROGRESS: bool = parse_env("TRACK_IN_PROGRESS").unwrap_or(false);
+}
+
+#[cfg(feature = "expose-metrics")]
 struct InProgressGuard {
     method: &'static str,
     route: &'static str,
@@ -67,9 +72,12 @@ struct InProgressGuard {
 
 #[cfg(feature = "expose-metrics")]
 impl InProgressGuard {
-    pub fn new(method: &'static str, route: &'static str) -> InProgressGuard {
+    pub fn new(method: &'static str, route: &'static str) -> Option<InProgressGuard> {
+        if !*TRACK_IN_PROGRESS {
+            return None;
+        }
         increment_gauge!(METRIC_KEY_IN_PROGRESS.as_str(), 1f64, "method"=>method, "route"=>route);
-        InProgressGuard { method, route }
+        return Some(InProgressGuard { method, route });
     }
 }
 

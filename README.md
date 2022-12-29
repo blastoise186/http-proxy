@@ -77,6 +77,12 @@ enviroment variables:
   response code + ratelimit scope) will continue to be reported past their last
   occurence before they are discarded. This avoids polluting your metrics with
   one off request metrics (9 datapoints per scrape) for long after it happened
+  - `TRACK_IN_PROGRESS` (bool, defaults to disabled, only applicable if the 
+  metrics feature is active): determines if the proxy tracks the amount of in
+  flight proxy requests or not. These are exposed through metrics (http verb +
+  route) and can be useful to track overflow situations where downstream clients
+  are making requests faster than rate limits allow, building up in the proxy and
+  causing delays. 
 
 ### Running via Docker
 
