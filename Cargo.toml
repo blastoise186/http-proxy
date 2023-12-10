@@ -13,7 +13,7 @@ hyper-trust-dns = { version = "0.5", default-features = false }
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-twilight-http-ratelimiting = "0.14"
+twilight-http-ratelimiting = "0.15"
 ahash = "0.8"
 lazy_static = { version = "1.4"}
 
