@@ -18,7 +18,7 @@ ahash = "0.8"
 lazy_static = { version = "1.4"}
 
 # Only used by the `expose-metrics` feature.
-metrics = { version = "0.20", optional = true }
+metrics = { version = "0.22", optional = true }
 metrics-exporter-prometheus = { version = "0.13", default-features = false, optional = true }
 metrics-util = { version = "0.14", optional = true }
 
