@@ -1197,7 +1197,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-trust-dns",
  "lazy_static",
- "metrics 0.20.1",
+ "metrics 0.22.0",
  "metrics-exporter-prometheus",
  "metrics-util",
  "tokio",
