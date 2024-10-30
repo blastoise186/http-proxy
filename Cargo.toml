@@ -15,7 +15,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 twilight-http-ratelimiting = "0.15"
 ahash = "0.8"
-lazy_static = { version = "1.4"}
+lazy_static = { version = "1.5"}
 
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.24", optional = true }
