@@ -19,7 +19,7 @@ lazy_static = { version = "1.4"}
 
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.24", optional = true }
-metrics-exporter-prometheus = { version = "0.14", default-features = false, optional = true }
+metrics-exporter-prometheus = { version = "0.16", default-features = false, optional = true }
 metrics-util = { version = "0.16", optional = true }
 
 [features]
