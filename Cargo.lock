@@ -306,9 +306,6 @@ name = "hashbrown"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
-dependencies = [
- "ahash",
-]
 
 [[package]]
 name = "hashbrown"
@@ -620,16 +617,6 @@ dependencies = [
 
 [[package]]
 name = "metrics"
-version = "0.22.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2be3cbd384d4e955b231c895ce10685e3d8260c5ccffae898c96c723b0772835"
-dependencies = [
- "ahash",
- "portable-atomic",
-]
-
-[[package]]
-name = "metrics"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ae428771d17306715c5091d446327d1cfdedc82185c65ba8423ab404e45bf10"
@@ -646,29 +633,10 @@ checksum = "85b6f8152da6d7892ff1b7a1c0fa3f435e92b5918ad67035c3bb432111d9a29b"
 dependencies = [
  "base64",
  "indexmap",
- "metrics 0.24.0",
- "metrics-util 0.18.0",
+ "metrics",
+ "metrics-util",
  "quanta",
  "thiserror",
-]
-
-[[package]]
-name = "metrics-util"
-version = "0.16.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b07a5eb561b8cbc16be2d216faf7757f9baf3bfb94dbb0fae3df8387a5bb47f"
-dependencies = [
- "aho-corasick",
- "crossbeam-epoch",
- "crossbeam-utils",
- "hashbrown 0.14.3",
- "indexmap",
- "metrics 0.22.3",
- "num_cpus",
- "ordered-float",
- "quanta",
- "radix_trie",
- "sketches-ddsketch 0.2.0",
 ]
 
 [[package]]
@@ -677,12 +645,16 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "15b482df36c13dd1869d73d14d28cd4855fbd6cfc32294bee109908a9f4a4ed7"
 dependencies = [
+ "aho-corasick",
  "crossbeam-epoch",
  "crossbeam-utils",
  "hashbrown 0.15.0",
- "metrics 0.24.0",
+ "indexmap",
+ "metrics",
+ "ordered-float",
  "quanta",
- "sketches-ddsketch 0.3.0",
+ "radix_trie",
+ "sketches-ddsketch",
 ]
 
 [[package]]
@@ -1037,12 +1009,6 @@ dependencies = [
 
 [[package]]
 name = "sketches-ddsketch"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ceb945e54128e09c43d8e4f1277851bd5044c6fc540bbaa2ad888f60b3da9ae7"
-
-[[package]]
-name = "sketches-ddsketch"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1e9a774a6c28142ac54bb25d25562e6bcf957493a184f15ad4eebccb23e410a"
@@ -1365,9 +1331,9 @@ dependencies = [
  "hyper-rustls",
  "hyper-trust-dns",
  "lazy_static",
- "metrics 0.24.0",
+ "metrics",
  "metrics-exporter-prometheus",
- "metrics-util 0.16.3",
+ "metrics-util",
  "tokio",
  "tracing",
  "tracing-subscriber",
